@@ -51,9 +51,6 @@ module RubyUnits
     self.unit_values = {}
     @unit_regex = nil
     @unit_match_regex = nil
-    @prefix_regex = nil
-    @sorted_unit_keys = nil
-    @sorted_prefix_keys = nil
     UNITY              = "<1>"
     UNITY_ARRAY        = [UNITY].freeze
 
@@ -198,8 +195,6 @@ module RubyUnits
       @unit_regex = nil
       @unit_match_regex = nil
       @prefix_regex = nil
-      @sorted_unit_keys = nil
-      @sorted_prefix_keys = nil
 
       definitions.each_value do |definition|
         use_definition(definition)
@@ -380,21 +375,11 @@ module RubyUnits
       ]
     end
 
-    # return sorted unit keys (cached for performance)
-    # Unit names are reverse sorted by length so the regexp matcher will prefer longer and more specific names
-    # @return [Array<String>]
-    # @private
-    def self.sorted_unit_keys
-      @sorted_unit_keys ||= begin
-        unit_map.keys.sort_by { |k| [k.length, k] }.reverse.freeze
-      end
-    end
-
     # return a fragment of a regex to be used for matching units or reconstruct it if hasn't been used yet.
     # Unit names are reverse sorted by length so the regexp matcher will prefer longer and more specific names
     # @return [String]
     def self.unit_regex
-      @unit_regex ||= sorted_unit_keys.join("|").freeze
+      @unit_regex ||= unit_map.keys.sort_by { [_1.length, _1] }.reverse.join("|")
     end
 
     # return a regex used to match units
@@ -403,21 +388,11 @@ module RubyUnits
       @unit_match_regex ||= /(#{prefix_regex})??(#{unit_regex})\b/
     end
 
-    # return sorted prefix keys (cached for performance)
-    # Prefix names are reverse sorted by length so the regexp matcher will prefer longer and more specific names
-    # @return [Array<String>]
-    # @private
-    def self.sorted_prefix_keys
-      @sorted_prefix_keys ||= begin
-        prefix_map.keys.sort_by { |k| [k.length, k] }.reverse.freeze
-      end
-    end
-
     # return a regexp fragment used to match prefixes
     # @return [String]
     # @private
     def self.prefix_regex
-      @prefix_regex ||= sorted_prefix_keys.join("|").freeze
+      @prefix_regex ||= prefix_map.keys.sort_by { [_1.length, _1] }.reverse.join("|")
     end
 
     # Generates (and memoizes) a regexp matching any of the temperature units or their aliases.
@@ -445,7 +420,6 @@ module RubyUnits
         prefix_values[definition.name] = definition.scalar
         definition.aliases.each { prefix_map[_1] = definition.name }
         @prefix_regex = nil # invalidate the prefix regex
-        @sorted_prefix_keys = nil # invalidate the sorted prefix keys cache
       else
         unit_values[definition.name]          = {}
         unit_values[definition.name][:scalar] = definition.scalar
@@ -453,7 +427,6 @@ module RubyUnits
         unit_values[definition.name][:denominator] = definition.denominator if definition.denominator
         definition.aliases.each { unit_map[_1] = definition.name }
         @unit_regex = nil # invalidate the unit regex
-        @sorted_unit_keys = nil # invalidate the sorted unit keys cache
       end
     end
 
