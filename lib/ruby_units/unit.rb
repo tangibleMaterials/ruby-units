@@ -101,6 +101,12 @@ module RubyUnits
     COMPLEX_REGEX      = /#{COMPLEX_NUMBER}\s?(?<unit>.+)?/.freeze
     RATIONAL_REGEX     = /#{RATIONAL_NUMBER}\s?(?<unit>.+)?/.freeze
     KELVIN             = ["<kelvin>"].freeze
+    
+    # Frozen hash for symbol replacements to avoid repeated hash creation
+    SYMBOL_REPLACEMENTS = { "%" => "percent", "'" => "feet", '"' => "inch", "#" => "pound" }.freeze
+    
+    # Pre-compiled regex for fast path detection
+    SIMPLE_UNIT_REGEX = /\A[a-zA-Z][a-zA-Z\-]*\z/.freeze
     FAHRENHEIT         = ["<fahrenheit>"].freeze
     RANKINE            = ["<rankine>"].freeze
     CELSIUS            = ["<celsius>"].freeze
@@ -1638,13 +1644,50 @@ module RubyUnits
     # @return [nil,RubyUnits::Unit]
     # @todo This should either be a separate class or at least a class method
     def parse(passed_unit_string = "0")
+      # Fast path for simple unit definitions used during initialization
+      case passed_unit_string
+      when "1", "1.0", 1, 1.0
+        @scalar = 1
+        @numerator = UNITY_ARRAY
+        @denominator = UNITY_ARRAY
+        return
+      end
+      
+      # Use new parser if enabled
+      if RubyUnits.configuration.use_new_parser
+        begin
+          result = parse_with_new_parser(passed_unit_string)
+          if result
+            @scalar = result.scalar
+            @numerator = result.numerator.empty? ? UNITY_ARRAY : result.numerator.freeze
+            @denominator = result.denominator.empty? ? UNITY_ARRAY : result.denominator.freeze
+            return
+          end
+        rescue RubyUnits::Parser::ParseError => e
+          # Fall back to legacy parser if new parser fails
+          if RubyUnits.configuration.parser_debug
+            warn "New parser failed for '#{passed_unit_string}': #{e.message}, falling back to legacy parser"
+          end
+        end
+      end
+      
+      # Fast path for simple unit names (disabled for now due to compatibility issues)
+      # if passed_unit_string.is_a?(String) && 
+      #    passed_unit_string =~ SIMPLE_UNIT_REGEX &&
+      #    self.class.definition(passed_unit_string)
+      #   @scalar = 1
+      #   @numerator = [passed_unit_string.freeze]
+      #   @denominator = UNITY_ARRAY
+      #   return
+      # end
+      
       unit_string = passed_unit_string.dup
       unit_string = "#{Regexp.last_match(1)} USD" if unit_string =~ /\$\s*(#{NUMBER_REGEX})/
       unit_string.gsub!("\u00b0".encode("utf-8"), "deg") if unit_string.encoding == Encoding::UTF_8
 
       unit_string.gsub!(/(\d)[_,](\d)/, '\1\2') # remove underscores and commas in numbers
 
-      unit_string.gsub!(/[%'"#]/, "%" => "percent", "'" => "feet", '"' => "inch", "#" => "pound")
+      unit_string.gsub!(/[%'"#]/, SYMBOL_REPLACEMENTS)
       if unit_string.start_with?(COMPLEX_NUMBER)
         match = unit_string.match(COMPLEX_REGEX)
         real = Float(match[:real]) if match[:real]
@@ -1790,25 +1833,87 @@ module RubyUnits
 
       @numerator   ||= UNITY_ARRAY
       @denominator ||= UNITY_ARRAY
-      @numerator = top.scan(self.class.unit_match_regex).delete_if(&:empty?).compact if top
-      @denominator = bottom.scan(self.class.unit_match_regex).delete_if(&:empty?).compact if bottom
+      
+      # Cache regex to avoid repeated method calls
+      unit_match_regex = self.class.unit_match_regex
+      @numerator = top.scan(unit_match_regex).delete_if(&:empty?).compact if top
+      @denominator = bottom.scan(unit_match_regex).delete_if(&:empty?).compact if bottom
 
       # eliminate all known terms from this string.  This is a quick check to see if the passed unit
       # contains terms that are not defined.
-      used = "#{top} #{bottom}".to_s.gsub(self.class.unit_match_regex, "").gsub(%r{[\d*, "'_^/$]}, "")
+      used = "#{top} #{bottom}".to_s.gsub(unit_match_regex, "").gsub(%r{[\d*, "'_^/$]}, "")
       raise(ArgumentError, "'#{passed_unit_string}' Unit not recognized") unless used.empty?
 
+      # Cache class method calls for better performance
+      prefix_map = self.class.prefix_map
+      unit_map = self.class.unit_map
+      
       @numerator = @numerator.map do |item|
-        self.class.prefix_map[item[0]] ? [self.class.prefix_map[item[0]], self.class.unit_map[item[1]]] : [self.class.unit_map[item[1]]]
+        prefix_map[item[0]] ? [prefix_map[item[0]], unit_map[item[1]]] : [unit_map[item[1]]]
       end.flatten.compact.delete_if(&:empty?)
 
       @denominator = @denominator.map do |item|
-        self.class.prefix_map[item[0]] ? [self.class.prefix_map[item[0]], self.class.unit_map[item[1]]] : [self.class.unit_map[item[1]]]
+        prefix_map[item[0]] ? [prefix_map[item[0]], unit_map[item[1]]] : [unit_map[item[1]]]
       end.flatten.compact.delete_if(&:empty?)
 
       @numerator = UNITY_ARRAY if @numerator.empty?
       @denominator = UNITY_ARRAY if @denominator.empty?
       self
+    end
+
+    private
+
+    # Parse unit string using the new high-performance parser
+    def parse_with_new_parser(unit_string)
+      require_relative 'parser' unless defined?(RubyUnits::Parser)
+      
+      result = RubyUnits::Parser.parse(unit_string)
+      
+      # Apply compatibility mode if enabled
+      if RubyUnits.configuration.compatibility_mode
+        legacy_result = parse_with_legacy_parser(unit_string)
+        unless results_equivalent?(result, legacy_result)
+          if RubyUnits.configuration.parser_debug
+            warn "Parser results differ for '#{unit_string}': new=#{result.inspect}, legacy=#{legacy_result.inspect}"
+          end
+          return legacy_result
+        end
+      end
+      
+      result
+    end
+
+    # Parse unit string using the legacy regex-based parser
+    def parse_with_legacy_parser(unit_string)
+      # Create a temporary unit to parse with legacy method
+      temp_unit = Unit.allocate
+      temp_unit.instance_variable_set(:@scalar, 1)
+      temp_unit.instance_variable_set(:@numerator, UNITY_ARRAY)
+      temp_unit.instance_variable_set(:@denominator, UNITY_ARRAY)
+      
+      # Temporarily disable new parser to force legacy parsing
+      original_setting = RubyUnits.configuration.use_new_parser
+      RubyUnits.configuration.use_new_parser = false
+      
+      begin
+        temp_unit.send(:parse, unit_string)
+        RubyUnits::Parser::ParseResult.new(
+          temp_unit.scalar,
+          temp_unit.numerator == UNITY_ARRAY ? [] : temp_unit.numerator,
+          temp_unit.denominator == UNITY_ARRAY ? [] : temp_unit.denominator
+        )
+      ensure
+        RubyUnits.configuration.use_new_parser = original_setting
+      end
+    end
+
+    # Check if two parse results are equivalent
+    def results_equivalent?(result1, result2)
+      return false unless result1.is_a?(RubyUnits::Parser::ParseResult) && result2.is_a?(RubyUnits::Parser::ParseResult)
+      
+      (result1.scalar - result2.scalar).abs < 1e-10 &&
+        result1.numerator.sort == result2.numerator.sort &&
+        result1.denominator.sort == result2.denominator.sort
     end
   end
 end

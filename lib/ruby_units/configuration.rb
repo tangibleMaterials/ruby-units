@@ -42,9 +42,37 @@ module RubyUnits
     #   @return [Symbol] the format to use when generating output (:rational or :exponential) (default: :rational)
     attr_reader :format
 
+    # Whether to use the new high-performance parser instead of the legacy regex-based parser
+    #
+    # @!attribute [rw] use_new_parser
+    #   @return [Boolean] whether to use the new parser (default: false)
+    attr_reader :use_new_parser
+
+    # Enable compatibility mode that validates new parser results against legacy parser
+    #
+    # @!attribute [rw] compatibility_mode
+    #   @return [Boolean] whether to enable compatibility mode (default: false)
+    attr_reader :compatibility_mode
+
+    # Size of the parser result cache
+    #
+    # @!attribute [rw] parser_cache_size
+    #   @return [Integer] maximum number of cached parser results (default: 1000)
+    attr_reader :parser_cache_size
+
+    # Enable debug logging for the parser
+    #
+    # @!attribute [rw] parser_debug
+    #   @return [Boolean] whether to enable parser debug logging (default: false)
+    attr_reader :parser_debug
+
     def initialize
       self.format = :rational
       self.separator = true
+      self.use_new_parser = false
+      self.compatibility_mode = false
+      self.parser_cache_size = 1000
+      self.parser_debug = false
     end
 
     # Use a space for the separator to use when generating output.
@@ -67,6 +95,46 @@ module RubyUnits
       raise ArgumentError, "configuration 'format' may only be :rational or :exponential" unless %i[rational exponential].include?(value)
 
       @format = value
+    end
+
+    # Enable or disable the new high-performance parser
+    #
+    # @param value [Boolean] whether to use the new parser
+    # @return [void]
+    def use_new_parser=(value)
+      raise ArgumentError, "configuration 'use_new_parser' may only be true or false" unless [true, false].include?(value)
+
+      @use_new_parser = value
+    end
+
+    # Enable or disable compatibility mode
+    #
+    # @param value [Boolean] whether to enable compatibility mode
+    # @return [void]
+    def compatibility_mode=(value)
+      raise ArgumentError, "configuration 'compatibility_mode' may only be true or false" unless [true, false].include?(value)
+
+      @compatibility_mode = value
+    end
+
+    # Set the parser cache size
+    #
+    # @param value [Integer] maximum number of cached parser results
+    # @return [void]
+    def parser_cache_size=(value)
+      raise ArgumentError, "configuration 'parser_cache_size' must be a positive integer" unless value.is_a?(Integer) && value > 0
+
+      @parser_cache_size = value
+    end
+
+    # Enable or disable parser debug logging
+    #
+    # @param value [Boolean] whether to enable parser debug logging
+    # @return [void]
+    def parser_debug=(value)
+      raise ArgumentError, "configuration 'parser_debug' may only be true or false" unless [true, false].include?(value)
+
+      @parser_debug = value
     end
   end
 end
