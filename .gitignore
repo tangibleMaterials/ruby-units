@@ -9,3 +9,12 @@
 /bin/
 # rspec failure tracking
 .rspec_status
+*.o
+*.log
+
+# C extension build artifacts
+/ext/**/*.c
+/ext/**/Makefile
+/ext/**/*.so
+/ext/**/*.bundle
+/ext/**/mkmf.log

@@ -1838,7 +1838,7 @@ module RubyUnits
 
     # Parse unit string using the new high-performance parser
     def parse_with_new_parser(unit_string)
-      require_relative 'parser' unless defined?(RubyUnits::Parser)
+      require_relative 'units_parser' unless defined?(RubyUnits::Parser)
       
       result = RubyUnits::Parser.parse(unit_string)
       

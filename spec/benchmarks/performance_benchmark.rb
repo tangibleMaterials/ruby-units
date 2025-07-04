@@ -128,6 +128,76 @@ complex_expressions.each do |expr|
   puts "  Improvement: #{improvement.round(1)}%"
 end
 
+# Test with unique expressions to avoid caching
+puts "\nUnique Expression Performance (No Caching):"
+puts "-" * 45
+
+def benchmark_unique_expressions(use_new_parser, iterations = 1000)
+  RubyUnits.configure do |config|
+    config.use_new_parser = use_new_parser
+    config.compatibility_mode = false
+  end
+  
+  # Templates for generating unique expressions
+  templates = [
+    "%{num} kg",
+    "%{num} m/s",
+    "%{num} kg/m^3", 
+    "%{num} m^2",
+    "%{num} km/h",
+    "%{num} degC",
+    "%{num} Hz",
+    "%{num} kg*m/s^2"
+  ]
+  
+  # Warm up with a few unique expressions
+  5.times do |i|
+    templates.each { |template| RubyUnits::Unit.new(template % {num: rand(1000)}) rescue nil }
+  end
+  
+  # Benchmark with completely unique expressions each time
+  total_time = Benchmark.measure do
+    iterations.times do
+      templates.each do |template|
+        unique_expr = template % {num: rand(100000) + rand.round(3)}
+        RubyUnits::Unit.new(unique_expr) rescue nil
+      end
+    end
+  end.real
+  
+  {
+    parser: use_new_parser ? "New" : "Legacy",
+    total_time: total_time,
+    avg_per_expression: total_time / (iterations * templates.length),
+    expressions_per_second: (iterations * templates.length) / total_time,
+    template_count: templates.length
+  }
+end
+
+# Benchmark unique expressions
+legacy_unique = benchmark_unique_expressions(false)
+new_unique = benchmark_unique_expressions(true)
+
+unique_improvement = ((legacy_unique[:total_time] - new_unique[:total_time]) / legacy_unique[:total_time]) * 100
+unique_speedup = legacy_unique[:total_time] / new_unique[:total_time]
+
+puts "Legacy Parser (unique expressions):"
+puts "  Total time: #{format_time(legacy_unique[:total_time])}"
+puts "  Avg per expression: #{format_time(legacy_unique[:avg_per_expression])}"
+puts "  Expressions/second: #{legacy_unique[:expressions_per_second].round(0)}"
+puts
+
+puts "New Parser (unique expressions):"
+puts "  Total time: #{format_time(new_unique[:total_time])}"
+puts "  Avg per expression: #{format_time(new_unique[:avg_per_expression])}"
+puts "  Expressions/second: #{new_unique[:expressions_per_second].round(0)}"
+puts
+
+puts "Unique Expression Performance:"
+puts "  Time reduction: #{unique_improvement.round(1)}%"
+puts "  Speed multiplier: #{unique_speedup.round(1)}x faster"
+puts "  Templates tested: #{legacy_unique[:template_count]}"
+
 puts "\nMemory Usage Comparison:"
 puts "-" * 30
 
@@ -151,6 +221,9 @@ if new_memory > 0
   puts "Memory improvement: #{memory_improvement.round(1)}%"
 end
 
-puts "\n" + "=" * 50
-puts "SUMMARY: New parser is #{speed_multiplier.round(1)}x faster (#{time_improvement.round(1)}% improvement)"
-puts "=" * 50
+puts "\n" + "=" * 70
+puts "SUMMARY:"
+puts "  Cached expressions: #{speed_multiplier.round(1)}x faster (#{time_improvement.round(1)}% improvement)"
+puts "  Unique expressions: #{unique_speedup.round(1)}x faster (#{unique_improvement.round(1)}% improvement)"
+puts "  Memory usage: #{new_memory}KB delta vs #{legacy_memory}KB delta"
+puts "=" * 70

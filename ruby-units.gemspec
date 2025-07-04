@@ -27,5 +27,8 @@ Gem::Specification.new do |spec|
     `git ls-files -z`.split("\x0").reject { _1.match(%r{^(test|spec|features)/}) }
   end
   spec.require_paths = ["lib"]
+  
+  # Ragel-based high-performance parser extension
+  spec.extensions = ["ext/units_parser/extconf.rb"]
   spec.metadata["rubygems_mfa_required"] = "true"
 end

@@ -42,10 +42,10 @@ module RubyUnits
     #   @return [Symbol] the format to use when generating output (:rational or :exponential) (default: :rational)
     attr_reader :format
 
-    # Whether to use the new high-performance parser instead of the legacy regex-based parser
+    # Whether to use the Ragel-based high-performance parser instead of the legacy regex-based parser
     #
     # @!attribute [rw] use_new_parser
-    #   @return [Boolean] whether to use the new parser (default: false)
+    #   @return [Boolean] whether to use the Ragel parser (default: true)
     attr_reader :use_new_parser
 
     # Enable compatibility mode that validates new parser results against legacy parser
@@ -97,9 +97,9 @@ module RubyUnits
       @format = value
     end
 
-    # Enable or disable the new high-performance parser
+    # Enable or disable the Ragel-based high-performance parser
     #
-    # @param value [Boolean] whether to use the new parser
+    # @param value [Boolean] whether to use the Ragel parser
     # @return [void]
     def use_new_parser=(value)
       raise ArgumentError, "configuration 'use_new_parser' may only be true or false" unless [true, false].include?(value)
