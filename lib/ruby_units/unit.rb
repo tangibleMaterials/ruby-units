@@ -395,6 +395,7 @@ module RubyUnits
     # @raise [ArgumentError] if the value cannot be coerced by the underlying constructors
     # @example
     #   Unit.parse_number("3.14") #=> 3.14 (Float) unless use_bigdecimal is enabled
+    #   Unit.parse_number("1")    #=> 1 (Integer)
     #   Unit.parse_number(2)      #=> 2 (unchanged)
     def self.parse_number(value)
       return value if value.is_a?(Numeric)
@@ -402,7 +403,9 @@ module RubyUnits
       if RubyUnits.configuration.use_bigdecimal
         BigDecimal(value)
       else
-        Float(value)
+        f = Float(value)
+        i = f.to_i
+        i == f ? i : f
       end
     end
 
@@ -423,6 +426,7 @@ module RubyUnits
     # :reek:ManualDispatch
     def self.normalize_to_i(value)
       return value unless value.is_a?(Numeric)
+      return value if value.is_a?(Float)
 
       responds_to_int = value.respond_to?(:to_int)
       if responds_to_int || value.respond_to?(:to_i)
@@ -2101,11 +2105,12 @@ module RubyUnits
     # @param [String] unit_string
     # @return [void]
     def parse_two_args(scalar, unit_string)
-      cached = unit_class.cached.get(unit_string)
-      if cached
-        copy(cached * scalar)
+      if unit_string.strip.empty?
+        parse_numeric(scalar)
       else
-        parse_string("#{scalar} #{unit_string}")
+        cached = unit_class.cached.get(unit_string)
+        unit = cached || unit_class.new(unit_string)
+        copy(unit * scalar)
       end
     end
 
@@ -2121,7 +2126,7 @@ module RubyUnits
       if cached
         copy(cached * scalar)
       else
-        parse_string("#{scalar} #{unit_str}")
+        copy(unit_class.new(unit_str) * scalar)
       end
     end
 
