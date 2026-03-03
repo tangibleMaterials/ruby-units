@@ -2067,6 +2067,8 @@ module RubyUnits
         parse_single_arg(second)
       in [first, String => second] if first
         parse_two_args(first, second)
+      in [Numeric => scalar, Unit => unit_obj]
+        copy(unit_obj * scalar)
       in [first, String | Array => second, String | Array => third] if first
         parse_three_args(first, second, third)
       else
@@ -2488,14 +2490,32 @@ module RubyUnits
     def resolve_expression_tokens(expression, passed_unit_string)
       result = []
       tokens = expression.split(/[\s*]+/)
-      tokens.each do |token|
+      i = 0
+      while i < tokens.length
+        token = tokens[i]
+        i += 1
         next if token.empty?
         # Skip pure numeric tokens (like "1" in "1/mol") - they are not units
         next if token.match?(/\A\d+\z/)
 
-        resolved = unit_class.resolve_unit_token(token)
+        # Try multi-word match: greedily join consecutive tokens to find
+        # multi-word aliases like "square meter" or "short ton"
+        resolved = nil
+        matched_count = 0
+        max_lookahead = [tokens.length - (i - 1), 4].min # limit lookahead
+        max_lookahead.downto(1) do |n|
+          candidate = tokens[(i - 1), n].join(" ")
+          resolved = unit_class.resolve_unit_token(candidate)
+          if resolved
+            matched_count = n
+            break
+          end
+        end
+
         invalid_unit(passed_unit_string) unless resolved
         result.concat(resolved)
+        # Skip the extra tokens consumed by the multi-word match
+        i += matched_count - 1
       end
       result
     end

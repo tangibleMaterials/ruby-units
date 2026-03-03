@@ -42,3 +42,52 @@ describe "normalize_to_i preserves Float scalar type" do
     expect(unit.scalar).to eq(Rational(3, 2))
   end
 end
+
+describe "Unit.new(numeric, unit_object) — Unit as second argument" do
+  it "creates a unit with the given scalar and the Unit's unit" do
+    du = RubyUnits::Unit.new("1 m^2")
+    result = RubyUnits::Unit.new(9.290304, du)
+    expect(result.units).to eq("m^2")
+    expect(result.scalar).to be_within(1e-6).of(9.290304)
+  end
+
+  it "works with integer scalar and simple unit" do
+    du = RubyUnits::Unit.new("1 kg")
+    result = RubyUnits::Unit.new(5, du)
+    expect(result).to eq(RubyUnits::Unit.new("5 kg"))
+  end
+
+  it "works when the Unit has a non-1 scalar" do
+    du = RubyUnits::Unit.new("2 m")
+    result = RubyUnits::Unit.new(3, du)
+    expect(result).to eq(RubyUnits::Unit.new("6 m"))
+  end
+end
+
+describe "Unit aliases containing spaces" do
+  it "parses a unit alias with a space" do
+    # "square meter" is a standard alias for m^2 if defined
+    # First verify the alias is in the unit_map
+    if RubyUnits::Unit.unit_map.key?("square meter")
+      result = RubyUnits::Unit.new("1 square meter")
+      expect(result).to be_compatible_with(RubyUnits::Unit.new("1 m^2"))
+    else
+      # Define it for the test
+      RubyUnits::Unit.define("m2_test") do |u|
+        u.definition = RubyUnits::Unit.new("1 m^2")
+        u.aliases = ["square meter test"]
+      end
+      result = RubyUnits::Unit.new("1 square meter test")
+      expect(result).to eq(RubyUnits::Unit.new("1 m^2"))
+    end
+  end
+
+  it "parses 'short ton' when registered as an alias" do
+    if RubyUnits::Unit.unit_map.key?("short ton")
+      result = RubyUnits::Unit.new("1 short ton")
+      expect(result.scalar).to eq(1)
+    else
+      skip "short ton alias not registered"
+    end
+  end
+end
