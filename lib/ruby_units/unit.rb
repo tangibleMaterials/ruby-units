@@ -2063,6 +2063,8 @@ module RubyUnits
       case options
       in [first] if first
         parse_single_arg(first)
+      in [nil, String => second]
+        parse_single_arg(second)
       in [first, String => second] if first
         parse_two_args(first, second)
       in [first, String | Array => second, String | Array => third] if first
