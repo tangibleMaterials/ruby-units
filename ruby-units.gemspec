@@ -26,6 +26,7 @@ Gem::Specification.new do |spec|
   spec.files = Dir.chdir(File.expand_path(__dir__)) do
     `git ls-files -z`.split("\x0").reject { _1.match(%r{^(test|spec|features)/}) }
   end
+  spec.extensions = ["ext/ruby_units/extconf.rb"]
   spec.require_paths = ["lib"]
   spec.metadata["rubygems_mfa_required"] = "true"
 end

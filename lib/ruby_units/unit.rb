@@ -336,6 +336,8 @@ module RubyUnits
     # @param denominator_units [Array] denominator
     # @return [Hash]
     def self.eliminate_terms(scalar, numerator_units, denominator_units)
+      return _c_eliminate_terms(scalar, numerator_units, denominator_units) if respond_to?(:_c_eliminate_terms)
+
       combined = ::Hash.new(0)
 
       count_units(numerator_units, combined, 1)
@@ -1348,14 +1350,18 @@ module RubyUnits
         target_num = target.numerator
         target_den = target.denominator
 
-        # Compute conversion factor directly without intermediate arrays
-        numerator_factor = unit_array_scalar(@numerator) * unit_array_scalar(target_den)
-        denominator_factor = unit_array_scalar(target_num) * unit_array_scalar(@denominator)
+        if unit_class.respond_to?(:_c_convert_scalar)
+          converted_value = unit_class._c_convert_scalar(self, target)
+        else
+          # Compute conversion factor directly without intermediate arrays
+          numerator_factor = unit_array_scalar(@numerator) * unit_array_scalar(target_den)
+          denominator_factor = unit_array_scalar(target_num) * unit_array_scalar(@denominator)
 
-        scalar_is_integer = @scalar.is_a?(Integer)
-        conversion_scalar = scalar_is_integer ? @scalar.to_r : @scalar
-        converted_value = conversion_scalar * numerator_factor / denominator_factor
-        converted_value = unit_class.normalize_to_i(converted_value)
+          scalar_is_integer = @scalar.is_a?(Integer)
+          conversion_scalar = scalar_is_integer ? @scalar.to_r : @scalar
+          converted_value = conversion_scalar * numerator_factor / denominator_factor
+          converted_value = unit_class.normalize_to_i(converted_value)
+        end
         unit_class.new(scalar: converted_value, numerator: target_num, denominator: target_den, signature: target.signature)
       end
     end
@@ -2209,10 +2215,21 @@ module RubyUnits
     # @param [Array] options original options passed to initialize
     # @return [void]
     def finalize_initialization(options)
+      if respond_to?(:_c_finalize, true) && !temperature_tokens?
+        _c_finalize(options[0])
+        return
+      end
       update_base_scalar
       validate_temperature
       cache_unit_if_needed(options)
       freeze_instance_variables
+    end
+
+    # Quick check if any tokens are temperature-related.
+    # Used to skip C finalize path for temperature units which need special handling.
+    # @return [Boolean]
+    def temperature_tokens?
+      (@numerator + @denominator).any? { |t| t =~ /\A<(?:temp|deg)[CFRK]>\z/ }
     end
 
     # Validate that temperatures are not below absolute zero
