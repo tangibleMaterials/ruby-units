@@ -2219,21 +2219,14 @@ module RubyUnits
     # @param [Array] options original options passed to initialize
     # @return [void]
     def finalize_initialization(options)
-      if respond_to?(:_c_finalize, true) && !temperature_tokens?
-        _c_finalize(options[0])
+      # C finalize returns true on success, false if temperature tokens detected
+      if respond_to?(:_c_finalize, true) && _c_finalize(options[0])
         return
       end
       update_base_scalar
       validate_temperature
       cache_unit_if_needed(options)
       freeze_instance_variables
-    end
-
-    # Quick check if any tokens are temperature-related.
-    # Used to skip C finalize path for temperature units which need special handling.
-    # @return [Boolean]
-    def temperature_tokens?
-      (@numerator + @denominator).any? { |t| t =~ /\A<(?:temp|deg)[CFRK]>\z/ }
     end
 
     # Validate that temperatures are not below absolute zero
