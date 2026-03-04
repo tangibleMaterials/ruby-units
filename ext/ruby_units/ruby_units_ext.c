@@ -28,9 +28,7 @@ static ID id_iv_denominator;
 static ID id_iv_base_scalar;
 static ID id_iv_signature;
 static ID id_iv_base;
-static ID id_iv_base_unit;
 static ID id_iv_unit_name;
-static ID id_iv_output;
 
 /* Definition object ivar IDs (direct access, bypassing Ruby dispatch) */
 static ID id_defn_kind;
@@ -49,6 +47,10 @@ static ID id_set;
 static ID id_to_unit;
 static ID id_parse_into_numbers_and_units;
 static ID id_normalize_to_i;
+static ID id_keys;
+static ID id_concat;
+static ID id_eq;
+static ID id_to_r;
 
 /* ========================================================================
  * Ruby symbol/string constants
@@ -135,7 +137,7 @@ static int defn_is_base(VALUE defn) {
     if (scalar != INT2FIX(1)) {
         if (FIXNUM_P(scalar)) return 0;
         /* Handle Rational(1/1) etc. */
-        if (rb_funcall(scalar, rb_intern("=="), 1, INT2FIX(1)) != Qtrue) return 0;
+        if (rb_funcall(scalar, id_eq, 1, INT2FIX(1)) != Qtrue) return 0;
     }
 
     VALUE numerator = rb_ivar_get(defn, id_defn_numerator);
@@ -151,6 +153,9 @@ static int defn_is_base(VALUE defn) {
     /* Check numerator.first == "<#{@name}>" */
     VALUE first_num = rb_ary_entry(numerator, 0);
     VALUE raw_name = rb_ivar_get(defn, id_defn_name); /* e.g., "meter" (no brackets) */
+
+    if (!RB_TYPE_P(first_num, T_STRING) || NIL_P(raw_name) || !RB_TYPE_P(raw_name, T_STRING))
+        return 0;
 
     const char *num_ptr = RSTRING_PTR(first_num);
     long num_len = RSTRING_LEN(first_num);
@@ -557,6 +562,12 @@ static VALUE rb_unit_finalize(VALUE self, VALUE options_first) {
     VALUE denominator = rb_ivar_get(self, id_iv_denominator);
     VALUE signature = rb_ivar_get(self, id_iv_signature);
 
+    /* Guard: fall back to Ruby if ivars aren't arrays yet */
+    if (NIL_P(numerator) || !RB_TYPE_P(numerator, T_ARRAY) ||
+        NIL_P(denominator) || !RB_TYPE_P(denominator, T_ARRAY)) {
+        return Qfalse;
+    }
+
     /* Check for temperature tokens -- fall back to Ruby path */
     if (has_temperature_token(numerator, denominator)) {
         return Qfalse;
@@ -606,7 +617,7 @@ static VALUE rb_unit_finalize(VALUE self, VALUE options_first) {
 
     /* 3. Cache the unit if appropriate */
     int scalar_is_one = FIXNUM_P(scalar) ? (scalar == INT2FIX(1))
-                        : (rb_funcall(scalar, rb_intern("=="), 1, INT2FIX(1)) == Qtrue);
+                        : (rb_funcall(scalar, id_eq, 1, INT2FIX(1)) == Qtrue);
 
     if (RB_TYPE_P(options_first, T_STRING)) {
         VALUE parse_result = rb_funcall(unit_class, id_parse_into_numbers_and_units, 1, options_first);
@@ -640,28 +651,6 @@ static VALUE rb_unit_finalize(VALUE self, VALUE options_first) {
     /* Fixnums, true/false, and nil are always frozen -- skip */
 
     return Qtrue;
-}
-
-/*
- * Phase 2: rb_unit_units_string - replaces units() for the common case
- */
-static VALUE rb_unit_units_string(VALUE self) {
-    VALUE unit_class = rb_obj_class(self);
-    VALUE definitions = rb_funcall(unit_class, id_definitions, 0);
-    VALUE numerator = rb_ivar_get(self, id_iv_numerator);
-    VALUE denominator = rb_ivar_get(self, id_iv_denominator);
-    return build_units_string(definitions, numerator, denominator);
-}
-
-/*
- * Phase 2: rb_unit_base_check - replaces base? (uncached check)
- */
-static VALUE rb_unit_base_check(VALUE self) {
-    VALUE unit_class = rb_obj_class(self);
-    VALUE definitions = rb_funcall(unit_class, id_definitions, 0);
-    VALUE numerator = rb_ivar_get(self, id_iv_numerator);
-    VALUE denominator = rb_ivar_get(self, id_iv_denominator);
-    return check_base(definitions, numerator, denominator) ? Qtrue : Qfalse;
 }
 
 /*
@@ -713,7 +702,7 @@ static VALUE rb_unit_eliminate_terms(VALUE klass, VALUE scalar, VALUE numerator,
     VALUE result_num = rb_ary_new();
     VALUE result_den = rb_ary_new();
 
-    VALUE keys = rb_funcall(combined, rb_intern("keys"), 0);
+    VALUE keys = rb_funcall(combined, id_keys, 0);
     long keys_len = RARRAY_LEN(keys);
     for (i = 0; i < keys_len; i++) {
         VALUE key = rb_ary_entry(keys, i);
@@ -721,11 +710,11 @@ static VALUE rb_unit_eliminate_terms(VALUE klass, VALUE scalar, VALUE numerator,
         long j;
         if (val > 0) {
             for (j = 0; j < val; j++) {
-                rb_funcall(result_num, rb_intern("concat"), 1, key);
+                rb_funcall(result_num, id_concat, 1, key);
             }
         } else if (val < 0) {
             for (j = 0; j < -val; j++) {
-                rb_funcall(result_den, rb_intern("concat"), 1, key);
+                rb_funcall(result_den, id_concat, 1, key);
             }
         }
     }
@@ -790,7 +779,7 @@ static VALUE rb_unit_convert_scalar(VALUE klass, VALUE self_unit, VALUE target_u
 
     VALUE conversion_scalar;
     if (RB_TYPE_P(self_scalar, T_FIXNUM) || RB_TYPE_P(self_scalar, T_BIGNUM)) {
-        conversion_scalar = rb_funcall(self_scalar, rb_intern("to_r"), 0);
+        conversion_scalar = rb_funcall(self_scalar, id_to_r, 0);
     } else {
         conversion_scalar = self_scalar;
     }
@@ -814,9 +803,7 @@ void Init_ruby_units_ext(void) {
     id_iv_base_scalar = rb_intern("@base_scalar");
     id_iv_signature = rb_intern("@signature");
     id_iv_base = rb_intern("@base");
-    id_iv_base_unit = rb_intern("@base_unit");
     id_iv_unit_name = rb_intern("@unit_name");
-    id_iv_output = rb_intern("@output");
 
     /* Definition object ivar IDs */
     id_defn_kind = rb_intern("@kind");
@@ -835,6 +822,10 @@ void Init_ruby_units_ext(void) {
     id_to_unit = rb_intern("to_unit");
     id_parse_into_numbers_and_units = rb_intern("parse_into_numbers_and_units");
     id_normalize_to_i = rb_intern("normalize_to_i");
+    id_keys = rb_intern("keys");
+    id_concat = rb_intern("concat");
+    id_eq = rb_intern("==");
+    id_to_r = rb_intern("to_r");
 
     /* Hash key symbols */
     sym_scalar = ID2SYM(rb_intern("scalar"));
@@ -895,8 +886,6 @@ void Init_ruby_units_ext(void) {
 
     /* Instance methods */
     rb_define_private_method(cUnit, "_c_finalize", rb_unit_finalize, 1);
-    rb_define_method(cUnit, "_c_units_string", rb_unit_units_string, 0);
-    rb_define_method(cUnit, "_c_base_check", rb_unit_base_check, 0);
 
     /* Class methods */
     rb_define_singleton_method(cUnit, "_c_eliminate_terms", rb_unit_eliminate_terms, 3);

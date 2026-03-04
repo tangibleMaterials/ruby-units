@@ -628,7 +628,6 @@ module RubyUnits
       nil
     end
 
-
     # Format a fraction part with optional rationalization
     # @param frac [Float] the fractional part
     # @param precision [Float] the precision for rationalization
@@ -1425,6 +1424,9 @@ module RubyUnits
     def units(with_prefix: true, format: nil)
       return "" if @numerator == UNITY_ARRAY && @denominator == UNITY_ARRAY
 
+      # Fast path: use cached unit_name for default args (rational format, with prefix)
+      return @unit_name if @unit_name && with_prefix && format != :exponential
+
       output_numerator = ["1"]
       output_denominator = []
       num = @numerator.clone.compact
@@ -1786,6 +1788,8 @@ module RubyUnits
       vector = ::Array.new(SIGNATURE_VECTOR.size, 0)
       expand_tokens_to_signature(@numerator, vector, 1)
       expand_tokens_to_signature(@denominator, vector, -1)
+      raise ArgumentError, "Power out of range (-20 < net power of a unit < 20)" if vector.any? { _1.abs >= 20 }
+
       vector.each_with_index { |item, index| vector[index] = item * (20**index) }
       vector.inject(0, :+)
     end
