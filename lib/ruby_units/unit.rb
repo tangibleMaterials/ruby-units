@@ -2358,7 +2358,13 @@ module RubyUnits
       if unit
         copy(unit)
         @scalar *= mult
-        @base_scalar *= mult
+        # Temperature base_scalar involves an offset (e.g. 0°F = 255.37K),
+        # so linear scaling is incorrect. Let update_base_scalar recompute it.
+        if temperature?
+          @base_scalar = nil
+        else
+          @base_scalar *= mult
+        end
         return self
       end
 
